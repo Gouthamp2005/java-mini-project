@@ -1,0 +1,238 @@
+import javax.swing.*;
+import java.awt.*;
+import java.awt.event.*;
+import java.sql.*;
+import java.util.ArrayList;
+public class ChatApp {
+ // Database connection details
+ private static final String URL = 
+"jdbc:mysql://localhost:3306/ChatApp";
+ private static final String USER = "root";
+ private static final String PASSWORD = "password";
+ // Establish database connection
+ public static Connection connect() {
+ try {
+ return DriverManager.getConnection(URL, USER, 
+PASSWORD);
+ } catch (SQLException e) {
+ e.printStackTrace();
+ return null;
+ }
+ }
+ // Retrieve messages between two users
+ public static ArrayList<String> getMessages(int userId, int 
+otherUserId) {
+ String query = "SELECT * FROM messages WHERE
+(sender_id = ? AND receiver_id = ?) OR (sender_id = ? AND 
+receiver_id = ?)";
+ ArrayList<String> messages = new ArrayList<>();
+ try (Connection conn = connect(); PreparedStatement stmt = 
+conn.prepareStatement(query)) {
+ stmt.setInt(1, userId);
+ stmt.setInt(2, otherUserId);
+ stmt.setInt(3, otherUserId);
+ stmt.setInt(4, userId);
+ ResultSet rs = stmt.executeQuery();
+ while (rs.next()) {
+ messages.add(rs.getString("message"));
+ }
+ } catch (SQLException e) {
+ e.printStackTrace();
+ }
+ return messages;
+ }
+ // Fetch all registered users
+ public static ArrayList<String> getAllUsers() {
+ String query = "SELECT user_id, username FROM users";
+ ArrayList<String> users = new ArrayList<>();
+ try (Connection conn = connect(); Statement stmt = 
+conn.createStatement()) {
+ ResultSet rs = stmt.executeQuery(query);
+ while (rs.next()) {
+ users.add(rs.getInt("user_id") + ": " + 
+rs.getString("username"));
+ }
+ } catch (SQLException e) {
+e.printStackTrace();
+ }
+ return users;
+ }
+ // Main method with GUI
+ public static void main(String[] args) {
+ JFrame frame = new JFrame("Chat Application");
+ frame.setSize(400, 500);
+ 
+frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+ frame.setLayout(new BorderLayout());
+ // Panels for login and registration
+ JPanel loginPanel = new JPanel();
+ loginPanel.setLayout(new GridLayout(4, 2));
+ JLabel userLabel = new JLabel("Username:");
+ JTextField userField = new JTextField();
+ JLabel passLabel = new JLabel("Password:");
+ JPasswordField passField = new JPasswordField();
+ JButton loginButton = new JButton("Login");
+ JButton registerButton = new JButton("Register");
+ loginPanel.add(userLabel);
+ loginPanel.add(userField);
+ loginPanel.add(passLabel);
+ loginPanel.add(passField);
+ loginPanel.add(loginButton);
+ loginPanel.add(registerButton);
+// Display login panel initially
+ frame.add(loginPanel, BorderLayout.CENTER);
+ // Action listener for Register button
+ registerButton.addActionListener(new ActionListener() {
+ public void actionPerformed(ActionEvent e) {
+ String username = userField.getText();
+ String password = new String(passField.getPassword());
+ if (register(username, password)) {
+ JOptionPane.showMessageDialog(frame, 
+"Registration Successful!");
+ } else {
+ JOptionPane.showMessageDialog(frame, 
+"Registration Failed!");
+ }
+ }
+ });
+ // Action listener for Login button
+ loginButton.addActionListener(new ActionListener() {
+ public void actionPerformed(ActionEvent e) {
+ String username = userField.getText();
+ String password = new String(passField.getPassword());
+ int userId = login(username, password);
+ if (userId != -1) {
+ JOptionPane.showMessageDialog(frame, "Login 
+Successful!");
+ openChatWindow(userId);
+ frame.dispose(); // Close the login window after 
+successful login
+} else {
+ JOptionPane.showMessageDialog(frame, "Invalid 
+Credentials!");
+ }
+ }
+ });
+ frame.setVisible(true);
+ }
+ // Open the chat window for the logged-in user
+ public static void openChatWindow(int userId) {
+ JFrame chatFrame = new JFrame("Chat Window");
+ chatFrame.setSize(500, 600);
+ chatFrame.setLayout(new BorderLayout());
+ // Text area for displaying chat history
+ JTextArea chatArea = new JTextArea();
+ chatArea.setEditable(false);
+ JScrollPane chatScroll = new JScrollPane(chatArea);
+ // Text area for typing messages
+ JTextArea messageField = new JTextArea(3, 30);
+ JScrollPane messageScroll = new 
+JScrollPane(messageField);
+ JButton sendButton = new JButton("Send");
+ JButton showUsersButton = new JButton("Show All Users");
+ // ComboBox for selecting a user to chat with
+JComboBox<String> usersComboBox = new 
+JComboBox<>();
+ ArrayList<String> usersList = getAllUsers();
+ for (String user : usersList) {
+ usersComboBox.addItem(user);
+ }
+ // Panel for user list and chat history
+ JPanel bottomPanel = new JPanel();
+ bottomPanel.add(usersComboBox);
+ bottomPanel.add(messageScroll);
+ bottomPanel.add(sendButton);
+ // Add components to chat window
+ chatFrame.add(chatScroll, BorderLayout.CENTER);
+ chatFrame.add(bottomPanel, BorderLayout.SOUTH);
+ // Load initial messages (empty initially)
+ chatArea.setText("Select a user to start chatting.\n");
+ // Action listener for Send button
+ sendButton.addActionListener(new ActionListener() {
+ public void actionPerformed(ActionEvent e) {
+ String message = messageField.getText();
+ if (!message.isEmpty()) {
+ String selectedUser = (String) 
+usersComboBox.getSelectedItem();
+ int receiverId = 
+Integer.parseInt(selectedUser.split(":")[0].trim());
+ if (sendMessage(userId, receiverId, message)) {
+ chatArea.append("You: " + message + "\n");
+messageField.setText("");
+ } else {
+ JOptionPane.showMessageDialog(chatFrame, 
+"Failed to send message!");
+ }
+ }
+ }
+ });
+ // Action listener for selecting a user to view previous 
+messages
+ usersComboBox.addActionListener(new ActionListener() {
+ public void actionPerformed(ActionEvent e) {
+ String selectedUser = (String) 
+usersComboBox.getSelectedItem();
+ int receiverId = 
+Integer.parseInt(selectedUser.split(":")[0].trim());
+ ArrayList<String> messages = getMessages(userId, 
+receiverId);
+ // Display previous messages
+ chatArea.setText(""); // Clear existing chat
+ for (String message : messages) {
+ chatArea.append(message + "\n");
+ }
+ }
+ });
+ chatFrame.setVisible(true);
+ }
+// Send message to a user
+ public static boolean sendMessage(int senderId, int receiverId, 
+String message) {
+ String query = "INSERT INTO messages (sender_id, 
+receiver_id, message) VALUES (?, ?, ?)";
+ try (Connection conn = connect(); PreparedStatement stmt = 
+conn.prepareStatement(query)) {
+ stmt.setInt(1, senderId);
+ stmt.setInt(2, receiverId);
+ stmt.setString(3, message);
+ stmt.executeUpdate();
+ return true;
+ } catch (SQLException e) {
+ e.printStackTrace();
+ return false;
+ }
+ }
+ // User Login
+ public static int login(String username, String password) {
+ String query = "SELECT user_id FROM users WHERE 
+username = ? AND password = ?";
+ try (Connection conn = connect(); PreparedStatement stmt = 
+conn.prepareStatement(query)) {
+ stmt.setString(1, username);
+ stmt.setString(2, password);
+ ResultSet rs = stmt.executeQuery();
+ if (rs.next()) {
+ return rs.getInt("user_id");
+ }
+ } catch (SQLException e) {
+e.printStackTrace();
+ }
+ return -1; // Invalid login
+ }
+ // User Registration
+ public static boolean register(String username, String password) 
+{
+ String query = "INSERT INTO users (username, password) 
+VALUES (?, ?)";
+ try (Connection conn = connect(); PreparedStatement stmt = 
+conn.prepareStatement(query)) {
+ stmt.setString(1, username);
+ stmt.setString(2, password);
+stmt.executeUpdate();
+ return true;
+ } catch (SQLException e) {
+ e.printStackTrace();
+ return false;
+ }
+ }
+}
